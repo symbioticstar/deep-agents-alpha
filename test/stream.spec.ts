@@ -36,6 +36,15 @@ class FakeAgent implements AgentInvoker {
   }
 }
 
+class CaptureInputAgent implements AgentInvoker {
+  lastInput: unknown;
+
+  async *stream(input: unknown): AsyncGenerator<unknown> {
+    this.lastInput = input;
+    yield ["messages", [{ content: [{ text: "ok" }] }, { node: "agent" }]];
+  }
+}
+
 describe("streamAgentEvents", () => {
   it("emits token/tool/done events", async () => {
     const events = [];
@@ -64,5 +73,31 @@ describe("streamAgentEvents", () => {
 
     expect(frame).toContain("event: token");
     expect(frame).toContain("data: {");
+  });
+
+  it("passes virtual files into agent input when provided", async () => {
+    const agent = new CaptureInputAgent();
+    const files = {
+      "/skills/example/SKILL.md": {
+        content: ["# Example"],
+        created_at: "2026-02-25T00:00:00.000Z",
+        modified_at: "2026-02-25T00:00:00.000Z",
+      },
+    };
+
+    for await (const _event of streamAgentEvents({
+      agent,
+      input: "test",
+      threadId: "t-1",
+      files,
+      debug: false,
+      logger: createLogger(false),
+    })) {
+    }
+
+    expect(agent.lastInput).toEqual({
+      messages: [{ role: "user", content: "test" }],
+      files,
+    });
   });
 });

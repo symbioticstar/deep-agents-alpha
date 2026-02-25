@@ -68,4 +68,24 @@ describe("server", () => {
     expect(response.statusCode).toBe(401);
     await app.close();
   });
+
+  it("streams session event and thread header", async () => {
+    const app = await buildServer({
+      config: baseConfig,
+      runtime: fakeRuntime,
+      logger: createLogger(false),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/agent/stream",
+      payload: { input: "hello" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["x-thread-id"]).toEqual(expect.any(String));
+    expect(response.body).toContain("event: session");
+    expect(response.body).toContain('"threadId":"');
+    await app.close();
+  });
 });

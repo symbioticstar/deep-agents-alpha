@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 
@@ -46,6 +48,7 @@ export async function registerAgentStreamRoute(options: {
     }
 
     const body = bodyResult.data;
+    const threadId = body.threadId?.trim() || randomUUID();
     const abortController = new AbortController();
     let streamFinished = false;
 
@@ -55,6 +58,7 @@ export async function registerAgentStreamRoute(options: {
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      "X-Thread-Id": threadId,
     });
 
     const heartbeat = setInterval(() => {
@@ -77,10 +81,19 @@ export async function registerAgentStreamRoute(options: {
     reply.raw.on("close", onClientDisconnect);
 
     try {
+      if (!reply.raw.destroyed) {
+        reply.raw.write(
+          toSseFrame({
+            type: "session",
+            threadId,
+          }),
+        );
+      }
+
       const runInput = {
         input: body.input,
+        threadId,
         signal: abortController.signal,
-        ...(body.threadId ? { threadId: body.threadId } : {}),
         ...(body.metadata ? { metadata: body.metadata } : {}),
       };
 

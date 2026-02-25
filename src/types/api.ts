@@ -6,6 +6,10 @@ export interface AgentStreamRequest {
 
 export type AgentStreamEvent =
   | {
+      type: "session";
+      threadId: string;
+    }
+  | {
       type: "token";
       text: string;
     }

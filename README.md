@@ -48,6 +48,18 @@ Or pipe input:
 echo "Write a short architecture review" | pnpm dev:cli
 ```
 
+Interactive multi-turn REPL:
+
+```bash
+pnpm dev:cli -- --interactive
+```
+
+REPL commands:
+
+- `/thread`: print current thread id
+- `/reset`: start a new conversation thread
+- `/exit` or `/quit`: leave REPL
+
 ## SSE API
 
 Endpoint:
@@ -70,6 +82,7 @@ Request body:
 
 SSE events:
 
+- `session` -> `{ "threadId": "..." }` (always first event)
 - `token` -> `{ "text": "..." }`
 - `tool_start` -> `{ "name": "...", "input": {...}, "id": "..." }`
 - `tool_end` -> `{ "name": "...", "output": {...}, "id": "..." }`
@@ -84,6 +97,10 @@ curl -N -X POST "http://localhost:3000/api/agent/stream" \
   -H "Content-Type: application/json" \
   -d '{"input":"Explain MCP in one paragraph"}'
 ```
+
+To continue multi-turn conversation, reuse the returned `threadId` (from the first `session` SSE event or `X-Thread-Id` response header) in the next request body.
+
+Conversation history and virtual filesystem state are kept in-process memory (ephemeral, cleared on server restart).
 
 If `API_AUTH_TOKEN` is set, include:
 

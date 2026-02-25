@@ -21,6 +21,7 @@
     "sync:skills": "tsx scripts/sync-remote-skills.ts"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.1.5",
     "@langchain/mcp-adapters": "^1.1.3",
     "@langchain/openai": "^1.2.10",
     "deepagents": "^1.8.1",

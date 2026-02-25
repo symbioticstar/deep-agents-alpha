@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { createDeepAgent, FilesystemBackend } from "deepagents";
+import { MemorySaver } from "@langchain/langgraph";
+import { createDeepAgent } from "deepagents";
 
 import { loadMcpConfig } from "../config/mcp.js";
 import { resolveSkillSources } from "../config/skills.js";
@@ -10,6 +11,7 @@ import type { AppConfig } from "../types/config.js";
 import { createMcpTooling } from "./mcp-client.js";
 import { createChatModel } from "./model.js";
 import type { Logger } from "./logger.js";
+import { loadVirtualFilesFromDirectories, type VirtualFiles } from "./virtual-files.js";
 
 const DEFAULT_SYSTEM_PROMPT = [
   "You are a practical coding assistant.",
@@ -50,13 +52,22 @@ export async function createAgentRuntime(config: AppConfig, logger: Logger): Pro
     logger,
   });
 
+  const preloadedSkillFiles =
+    resolvedSkills.filesystemDirs.length > 0
+      ? await loadVirtualFilesFromDirectories({
+          projectRoot: config.projectRoot,
+          directories: resolvedSkills.filesystemDirs,
+          logger,
+        })
+      : {};
+
+  const seedableSkillFileCount = Object.keys(preloadedSkillFiles).length;
+  const seededThreads = new Set<string>();
+
   const agent = createDeepAgent({
     model: createChatModel(config),
     tools: mcpTooling.tools,
-    backend: new FilesystemBackend({
-      rootDir: config.projectRoot,
-      virtualMode: true,
-    }),
+    checkpointer: new MemorySaver(),
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     ...(resolvedSkills.backendSkillSources.length > 0
       ? { skills: resolvedSkills.backendSkillSources }
@@ -66,17 +77,25 @@ export async function createAgentRuntime(config: AppConfig, logger: Logger): Pro
   logger.info("Agent runtime initialized", {
     mcpServers: mcpConfig.enabledServers,
     skillSources: resolvedSkills.backendSkillSources,
+    skillFilesPreloaded: seedableSkillFileCount,
+    sessionMemory: "in-memory-checkpointer",
   });
 
   return {
     async *run(input: AgentRunInput): AsyncGenerator<AgentStreamEvent> {
       const threadId = input.threadId?.trim() || randomUUID();
+      const shouldSeedSkillFiles = seedableSkillFileCount > 0 && !seededThreads.has(threadId);
+
+      if (shouldSeedSkillFiles) {
+        seededThreads.add(threadId);
+      }
 
       try {
         const streamInput = {
           agent,
           input: input.input,
           threadId,
+          ...(shouldSeedSkillFiles ? { files: cloneVirtualFiles(preloadedSkillFiles) } : {}),
           debug: config.debug,
           logger,
           ...(input.metadata ? { metadata: input.metadata } : {}),
@@ -105,4 +124,8 @@ export async function createAgentRuntime(config: AppConfig, logger: Logger): Pro
       }
     },
   };
+}
+
+function cloneVirtualFiles(files: VirtualFiles): VirtualFiles {
+  return structuredClone(files);
 }

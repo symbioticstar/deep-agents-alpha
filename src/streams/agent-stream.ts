@@ -1,3 +1,5 @@
+import type { FileData } from "deepagents";
+
 import type { Logger } from "../lib/logger.js";
 import type { AgentStreamEvent } from "../types/api.js";
 
@@ -178,6 +180,7 @@ export async function* streamAgentEvents(options: {
   agent: AgentInvoker;
   input: string;
   threadId: string;
+  files?: Record<string, FileData>;
   metadata?: Record<string, unknown>;
   debug: boolean;
   logger: Logger;
@@ -186,19 +189,19 @@ export async function* streamAgentEvents(options: {
   const startedTools = new Set<string>();
   const endedTools = new Set<string>();
 
-  const stream = await options.agent.stream(
-    {
-      messages: [{ role: "user", content: options.input }],
+  const agentInput = {
+    messages: [{ role: "user", content: options.input }],
+    ...(options.files ? { files: options.files } : {}),
+  };
+
+  const stream = await options.agent.stream(agentInput, {
+    configurable: {
+      thread_id: options.threadId,
+      metadata: options.metadata ?? {},
     },
-    {
-      configurable: {
-        thread_id: options.threadId,
-        metadata: options.metadata ?? {},
-      },
-      streamMode: ["messages", "updates"],
-      signal: options.signal,
-    },
-  );
+    streamMode: ["messages", "updates"],
+    signal: options.signal,
+  });
 
   for await (const rawChunk of stream) {
     if (options.signal?.aborted) {
