@@ -47,6 +47,7 @@ export async function registerAgentStreamRoute(options: {
 
     const body = bodyResult.data;
     const abortController = new AbortController();
+    let streamFinished = false;
 
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -62,10 +63,18 @@ export async function registerAgentStreamRoute(options: {
       }
     }, 15_000);
 
-    request.raw.on("close", () => {
+    const onClientDisconnect = () => {
+      if (streamFinished) {
+        return;
+      }
+
       abortController.abort();
+      logger.debug("SSE client disconnected, stream aborted");
       clearInterval(heartbeat);
-    });
+    };
+
+    request.raw.on("aborted", onClientDisconnect);
+    reply.raw.on("close", onClientDisconnect);
 
     try {
       const runInput = {
@@ -106,7 +115,10 @@ export async function registerAgentStreamRoute(options: {
         );
       }
     } finally {
+      streamFinished = true;
       clearInterval(heartbeat);
+      request.raw.off("aborted", onClientDisconnect);
+      reply.raw.off("close", onClientDisconnect);
       if (!reply.raw.destroyed) {
         reply.raw.end();
       }

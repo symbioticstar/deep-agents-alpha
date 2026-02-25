@@ -7,6 +7,14 @@ import { registerAgentStreamRoute } from "./routes/agent-stream.js";
 import { registerHealthRoute } from "./routes/health.js";
 import type { AppConfig } from "./types/config.js";
 
+function getOpenAIDomain(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return baseUrl;
+  }
+}
+
 export async function buildServer(options?: {
   config?: AppConfig;
   logger?: Logger;
@@ -48,6 +56,8 @@ async function start(): Promise<void> {
     });
     logger.info("Server started", {
       port: config.port,
+      openaiDomain: getOpenAIDomain(config.openai.baseUrl),
+      openaiModel: config.openai.model,
     });
   } catch (error) {
     logger.error("Failed to start server", {
