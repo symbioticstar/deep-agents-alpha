@@ -1,0 +1,21 @@
+servers:
+  - name: filesystem
+    enabled: false
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - /tmp
+
+  - name: example-http
+    enabled: false
+    transport: http
+    url: https://example.com/mcp
+    headers:
+      Authorization: Bearer replace-me
+
+  - name: example-sse
+    enabled: false
+    transport: sse
+    url: https://example.com/mcp
