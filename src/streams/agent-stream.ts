@@ -15,6 +15,11 @@ interface StreamModeChunk {
   payload: unknown;
 }
 
+interface MessageChunk {
+  message: unknown;
+  metadata: unknown;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -96,12 +101,72 @@ function normalizeChunk(rawChunk: unknown): StreamModeChunk {
   return { mode: null, payload: rawChunk };
 }
 
-function extractMessageCandidate(payload: unknown): unknown {
+function extractMessageChunk(payload: unknown): MessageChunk {
   if (Array.isArray(payload) && payload.length > 0) {
-    return payload[0];
+    return {
+      message: payload[0],
+      metadata: payload[1] ?? null,
+    };
   }
 
-  return payload;
+  return {
+    message: payload,
+    metadata: null,
+  };
+}
+
+function isToolNodeMetadata(metadata: unknown): boolean {
+  if (!isRecord(metadata)) {
+    return false;
+  }
+
+  const nodeCandidates = [metadata.langgraph_node, metadata.node, metadata.name];
+  for (const candidate of nodeCandidates) {
+    if (typeof candidate === "string" && candidate.toLowerCase().includes("tool")) {
+      return true;
+    }
+  }
+
+  const tags = metadata.tags;
+  if (!Array.isArray(tags)) {
+    return false;
+  }
+
+  return tags.some((tag) => typeof tag === "string" && tag.toLowerCase().includes("tool"));
+}
+
+function isAssistantMessage(message: unknown): boolean {
+  if (!isRecord(message)) {
+    return false;
+  }
+
+  if (typeof message.tool_call_id === "string") {
+    return false;
+  }
+
+  const role = message.role;
+  if (typeof role === "string") {
+    return role.toLowerCase() === "assistant";
+  }
+
+  const type = message.type;
+  if (typeof type === "string") {
+    const normalized = type.toLowerCase();
+    if (
+      normalized.includes("tool") ||
+      normalized.includes("human") ||
+      normalized.includes("system")
+    ) {
+      return false;
+    }
+
+    if (normalized.includes("ai") || normalized === "assistant") {
+      return true;
+    }
+  }
+
+  // Fallback for model chunks that do not carry explicit role/type fields.
+  return true;
 }
 
 function extractToolCalls(payload: unknown): Array<{ id?: string; name: string; input: unknown }> {
@@ -215,7 +280,11 @@ export async function* streamAgentEvents(options: {
     const { mode, payload } = normalizeChunk(rawChunk);
 
     if (mode === "messages") {
-      const message = extractMessageCandidate(payload);
+      const { message, metadata } = extractMessageChunk(payload);
+      if (!isAssistantMessage(message) || isToolNodeMetadata(metadata)) {
+        continue;
+      }
+
       const textParts = isRecord(message) ? extractText(message.content) : [];
 
       for (const text of textParts) {

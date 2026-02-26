@@ -45,6 +45,34 @@ class CaptureInputAgent implements AgentInvoker {
   }
 }
 
+class ToolMessageLeakAgent implements AgentInvoker {
+  async *stream(): AsyncGenerator<unknown> {
+    yield [
+      "messages",
+      [
+        {
+          type: "tool",
+          role: "tool",
+          tool_call_id: "tool-1",
+          content: [{ text: "     1\t# Skill Header" }],
+        },
+        { langgraph_node: "tools" },
+      ],
+    ];
+    yield [
+      "messages",
+      [
+        {
+          type: "AIMessageChunk",
+          role: "assistant",
+          content: [{ text: "final answer" }],
+        },
+        { langgraph_node: "agent" },
+      ],
+    ];
+  }
+}
+
 describe("streamAgentEvents", () => {
   it("emits token/tool/done events", async () => {
     const events = [];
@@ -99,5 +127,23 @@ describe("streamAgentEvents", () => {
       messages: [{ role: "user", content: "test" }],
       files,
     });
+  });
+
+  it("does not emit tool message content as token output", async () => {
+    const tokens: string[] = [];
+
+    for await (const event of streamAgentEvents({
+      agent: new ToolMessageLeakAgent(),
+      input: "test",
+      threadId: "t-1",
+      debug: false,
+      logger: createLogger(false),
+    })) {
+      if (event.type === "token") {
+        tokens.push(event.text);
+      }
+    }
+
+    expect(tokens).toEqual(["final answer"]);
   });
 });
